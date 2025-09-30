@@ -2,9 +2,13 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
-import { Client as SSHClient } from 'ssh2';
+import SSH2Module from 'ssh2';
+const { Client: SSHClient, utils: sshUtils } = SSH2Module as typeof import('ssh2');
 import { z } from 'zod';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { readFile } from 'fs/promises';
+import { resolve as resolvePath } from 'path';
+import os from 'os';
 
 // Example usage: node build/index.js --host=1.2.3.4 --port=22 --user=root --password=pass --key=path/to/key --timeout=5000
 function parseArgv() {
@@ -21,25 +25,45 @@ function parseArgv() {
 const isCliEnabled = process.env.SSH_MCP_DISABLE_MAIN !== '1';
 const argvConfig = isCliEnabled ? parseArgv() : {} as Record<string, string>;
 
-const HOST = argvConfig.host;
-const PORT = argvConfig.port ? parseInt(argvConfig.port) : 22;
-const USER = argvConfig.user;
-const PASSWORD = argvConfig.password;
-const KEY = argvConfig.key;
-const DEFAULT_TIMEOUT = argvConfig.timeout ? parseInt(argvConfig.timeout) : 60000; // 60 seconds default timeout
+function parseInteger(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
-function validateConfig(config: Record<string, string>) {
-  const errors = [];
-  if (!config.host) errors.push('Missing required --host');
-  if (!config.user) errors.push('Missing required --user');
-  if (config.port && isNaN(Number(config.port))) errors.push('Invalid --port');
-  if (errors.length > 0) {
-    throw new Error('Configuration error:\n' + errors.join('\n'));
+function expandPath(input: string): string {
+  if (!input) return input;
+  if (input === '~') return os.homedir();
+  if (input.startsWith('~/')) return resolvePath(os.homedir(), input.slice(2));
+  if (input.startsWith('~')) return resolvePath(os.homedir(), input.slice(1));
+  return resolvePath(input);
+}
+
+const HOST = argvConfig.host || process.env.SSH_MCP_HOST;
+const PORT = parseInteger(argvConfig.port ?? process.env.SSH_MCP_PORT, 22);
+const USER = argvConfig.user || process.env.SSH_MCP_USER;
+const PASSWORD = argvConfig.password || process.env.SSH_MCP_PASSWORD;
+const KEY = argvConfig.key || process.env.SSH_MCP_KEY;
+const KEY_PASSPHRASE = argvConfig.keyPassphrase || argvConfig.passphrase || process.env.SSH_MCP_KEY_PASSPHRASE;
+const DEFAULT_TIMEOUT = parseInteger(argvConfig.timeout ?? process.env.SSH_MCP_TIMEOUT, 60000); // 60 seconds default timeout
+
+function ensureSshConfig() {
+  if (!HOST) {
+    throw new McpError(ErrorCode.InvalidParams, 'SSH host must be provided via --host or SSH_MCP_HOST');
+  }
+  if (!USER) {
+    throw new McpError(ErrorCode.InvalidParams, 'SSH username must be provided via --user or SSH_MCP_USER');
+  }
+  if (Number.isNaN(PORT) || PORT <= 0 || PORT > 65535) {
+    throw new McpError(ErrorCode.InvalidParams, `Invalid SSH port: ${PORT}`);
+  }
+  if (Number.isNaN(DEFAULT_TIMEOUT) || DEFAULT_TIMEOUT <= 0) {
+    throw new McpError(ErrorCode.InvalidParams, `Invalid timeout: ${DEFAULT_TIMEOUT}`);
   }
 }
 
 if (isCliEnabled) {
-  validateConfig(argvConfig);
+  ensureSshConfig();
 }
 
 // Command sanitization and validation
@@ -86,6 +110,8 @@ server.tool(
     // Sanitize command input
     const sanitizedCommand = sanitizeCommand(command);
 
+    ensureSshConfig();
+
     const sshConfig: any = {
       host: HOST,
       port: PORT,
@@ -94,9 +120,69 @@ server.tool(
     try {
       if (PASSWORD) {
         sshConfig.password = PASSWORD;
-      } else if (KEY) {
-        const fs = await import('fs/promises');
-        sshConfig.privateKey = await fs.readFile(KEY, 'utf8');
+      } else {
+        const keyPath = KEY ? expandPath(KEY) : resolvePath(os.homedir(), '.ssh', 'id_rsa');
+        try {
+          const keyContent = await readFile(keyPath, 'utf8');
+          try {
+            const parsedResult = sshUtils.parseKey(keyContent, KEY_PASSPHRASE);
+            const parsedKeys = Array.isArray(parsedResult) ? parsedResult : [parsedResult];
+            const parseError = parsedKeys.find((entry: any) => entry instanceof Error);
+            if (parseError) {
+              if (!KEY_PASSPHRASE && parseError instanceof Error && /Encrypted/i.test(parseError.message ?? '')) {
+                throw new McpError(
+                  ErrorCode.InvalidParams,
+                  `SSH private key at ${keyPath} is encrypted; provide a passphrase via --keyPassphrase or SSH_MCP_KEY_PASSPHRASE`,
+                );
+              }
+              throw new McpError(
+                ErrorCode.InvalidParams,
+                `Failed to parse SSH private key at ${keyPath}: ${parseError instanceof Error ? parseError.message : parseError}`,
+              );
+            }
+
+            const encryptedWithoutPassphrase = parsedKeys.some((entry) => (entry as any)?.encrypted);
+            if (encryptedWithoutPassphrase && !KEY_PASSPHRASE) {
+              throw new McpError(
+                ErrorCode.InvalidParams,
+                `SSH private key at ${keyPath} is encrypted; provide a passphrase via --keyPassphrase or SSH_MCP_KEY_PASSPHRASE`,
+              );
+            }
+
+            if (parsedKeys.length > 1) {
+              throw new McpError(
+                ErrorCode.InvalidParams,
+                `SSH private key at ${keyPath} contains multiple key entries; provide a single key`);
+            }
+
+            const [parsedKey] = parsedKeys;
+            const privatePem = parsedKey.getPrivatePEM(KEY_PASSPHRASE);
+            sshConfig.privateKey = Buffer.isBuffer(privatePem) ? privatePem.toString('utf8') : privatePem;
+          } catch (parseThrow: any) {
+            if (!KEY_PASSPHRASE && parseThrow instanceof Error && /Encrypted/i.test(parseThrow.message ?? '')) {
+              throw new McpError(
+                ErrorCode.InvalidParams,
+                `SSH private key at ${keyPath} is encrypted; provide a passphrase via --keyPassphrase or SSH_MCP_KEY_PASSPHRASE`,
+              );
+            }
+            if (parseThrow instanceof McpError) {
+              throw parseThrow;
+            }
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              `Failed to parse SSH private key at ${keyPath}: ${parseThrow?.message || parseThrow}`,
+            );
+          }
+
+          if (KEY_PASSPHRASE) {
+            sshConfig.passphrase = KEY_PASSPHRASE;
+          }
+        } catch (readError: any) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Failed to read SSH private key from ${keyPath}: ${readError?.message || readError}`,
+          );
+        }
       }
       const result = await execSshCommand(sshConfig, sanitizedCommand);
       return result;
@@ -201,4 +287,4 @@ if (process.env.SSH_MCP_DISABLE_MAIN !== '1') {
   });
 }
 
-export { parseArgv, validateConfig };
+export { parseArgv, ensureSshConfig };
