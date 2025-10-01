@@ -84,35 +84,34 @@ Each active session maintains:
 
 ## Installation
 
-### From npm (recommended)
+Install the published package from npm so the `ssh-mcp-sessions` executable is available in your environment.
 
-Install the published package globally so the `ssh-mcp` executable is on your PATH:
+### Global install (preferred)
 
 ```bash
 npm install -g ssh-mcp-sessions
 ```
 
-Once installed, you can launch the server anywhere by running `ssh-mcp`.
+Launch the server anywhere by running `ssh-mcp-sessions`.
 
-> Need a project-local install instead? Run `npm install ssh-mcp-sessions` inside your app and invoke `npx ssh-mcp` (or `node ./node_modules/ssh-mcp-sessions/build/index.js`).
+### Project-local install
 
-### From source (development)
+Inside your project:
 
 ```bash
-git clone https://github.com/fryjustinc/ssh-mcp.git
-cd ssh-mcp
-npm install
-npm run build
+npm install ssh-mcp-sessions
 ```
 
-The build step compiles TypeScript into `./build/index.js` and marks it executable.
+Run the server with `npx ssh-mcp-sessions` (or reference `./node_modules/.bin/ssh-mcp-sessions`).
+
+> Building from source is only required for contributing. See the [Contributing](#contributing) section if you plan to work on the codebase itself.
 
 ---
 
 ## Running the Server
 
 ```bash
-node build/index.js
+ssh-mcp-sessions
 ```
 
 The server is purely stdio-based. Once running it prints:
@@ -121,20 +120,22 @@ The server is purely stdio-based. Once running it prints:
 SSH MCP Server running on stdio
 ```
 
-You can register it with Claude Code or any other MCP client:
+You can register it with Claude Code or any other MCP client by pointing to the executable installed from npm:
 
 ```json
 {
   "mcpServers": {
-    "mcp-remote-ssh": {
-      "command": "node",
+    "ssh-mcp": {
+      "command": "npx",
       "args": [
-        "/absolute/path/to/ssh-mcp/build/index.js"
+        "ssh-mcp-sessions"
       ]
     }
   }
 }
 ```
+
+If you prefer to rely on PATH resolution (e.g., after a global install), you can simplify the entry to `{ "command": "ssh-mcp-sessions" }`.
 
 > **Note:** The server no longer accepts CLI arguments for host/user/password. Everything is configured dynamically via MCP tools.
 
@@ -260,12 +261,175 @@ Optionally you can supply `sessionId`; otherwise, a UUID is returned.
 
 Example response:
 
-```
+```fff4b34b-56dd-4711-9555-c04e8b64249b
 ```
 
-## Client Integrations
+### Listing Sessions
 
-The server speaks the standard MCP protocol, so registration mainly involves pointing your client at the executable produced by this package. The snippets below assume you installed the package globally (`npm install -g ssh-mcp-sessions`) so the `ssh-mcp` binary is available on your PATH. Replace absolute paths if you opted for a local install.
+Tool: **`list-sessions`**
+
+Shows all active sessions with metadata:
+
+```
+session=fff4… host=host.local:22 user=user uptime=3m12s lastCommand=ls -la
+```
+
+### Executing Commands
+
+Tool: **`exec`**
+
+```json
+{
+  "session_id": "fff4b34b-56dd-4711-9555-c04e8b64249b",
+  "command": "pwd"
+}
+```
+
+- Commands are sanitized (trimmed, length-limited).
+- Output is captured from the persistent shell and returned as plain text.
+- Non-zero exit codes raise `McpError` with stderr in the message.
+
+Example output:
+
+```
+/home/user
+```
+
+### Closing Sessions
+
+Tool: **`close-session`**
+
+```json
+{
+  "sessionId": "fff4b34b-56dd-4711-9555-c04e8b64249b"
+}
+```
+
+> Note: session IDs for `close-session` use `sessionId` (camelCase) to remain backwards compatible with the underlying tool definition.
+
+### Legacy Helper
+
+Function `execSshCommand(hostId, command, sessionId?)` remains exported for programmatic use and simply delegates through the session machinery described above.
+
+---
+
+## Authentication Modes
+
+1. **Password** — stored in `hosts.json`; transmitted to `ssh2` during connection.
+2. **Private key** — `keyPath` read at runtime; supports encrypted keys (prompt user to set `SSH_MCP_KEY_PASSPHRASE` before launch if needed).
+3. **SSH agent (fallback)** — if neither password nor key is set and `SSH_AUTH_SOCK` is present, the agent is passed to `ssh2` (`agentForward: true`).
+
+---
+
+## Timeouts & Inactivity Handling
+
+- Each session has a **global inactivity timeout** (default 2 hours). Timer resets whenever a command executes successfully.
+- If the timer elapses, the session cleans up the SSH connection, shell, and resolver buffer, and removes itself from `activeSessions`.
+- Command completion uses a UUID marker: `printf '__MCP_DONE__{uuid}%d\n' $?`. Output before the marker is returned; numeric code after the marker becomes the exit status.
+
+---
+
+## Directory Structure
+
+```
+ssh-mcp/
+├── build/                # Compiled JS output (npm run build)
+├── src/index.ts          # Primary MCP server implementation
+├── test/                 # Vitest tests (CLI-only; integration tests skipped)
+├── package.json
+├── README.md             # This document
+└── ~/.ssh-mcp/hosts.json # Created at runtime (per user)
+```
+
+---
+
+## Using the MCP Tools
+
+Below is a typical workflow using Claude Code (commands start with `/mcp`), but the same JSON payloads apply to any MCP inspector.
+
+1. **Add host**
+   ```
+   /mcp mcp-remote-ssh add-host {"host_id":"host","host":"host.local","username":"user"}
+   ```
+
+2. **Start session**
+   ```
+   /mcp mcp-remote-ssh start-session {"host_id":"host"}
+   ```
+   → returns `session_id`
+
+3. **Run commands**
+   ```
+   /mcp mcp-remote-ssh exec {"session_id":"<id>","command":"pwd"}
+   /mcp mcp-remote-ssh exec {"session_id":"<id>","command":"ls -la"}
+   ```
+
+4. **Inspect**
+   ```
+   /mcp mcp-remote-ssh list-sessions
+   /mcp mcp-remote-ssh list-hosts
+   ```
+
+5. **Close session**
+   ```
+   /mcp mcp-remote-ssh close-session {"sessionId":"<id>"}
+   ```
+
+---
+
+## Testing
+
+Unit tests (Vitest):
+
+```bash
+npm run test
+```
+
+Integration smoke tests for SSH are not included by default because they require external infrastructure. You can manually validate with the workflow above.
+
+---
+
+## Troubleshooting
+
+| Symptom | Possible Cause | Suggested Action |
+|---------|----------------|------------------|
+| `Host 'xyz' already exists` | Duplicate `host_id` | Use `edit-host` or pick a new ID. |
+| `Host 'xyz' not found` | Missing entry | Run `list-hosts` to confirm; add host again if needed. |
+| `Error (code X): …` | Remote command returned non-zero | Inspect the command output. The session remains open. |
+| Session disappears from `list-sessions` | Inactivity timeout reached | Start a new session or reduce idle periods. |
+| Permission denied (publickey) | Missing credentials | Ensure `keyPath` or agent has the right key. |
+| `Invalid key path` | `keyPath` resolved to undefined or missing file | Provide an absolute/tilde path that exists. |
+
+---
+
+## Security Considerations
+
+- Treat `~/.ssh-mcp/hosts.json` as sensitive; it may contain passwords or key paths.
+- Prefer key-based or agent authentication where possible.
+- Limit `hosts.json` permissions: `chmod 600 ~/.ssh-mcp/hosts.json`.
+- Sessions inherit all privileges of the configured SSH user.
+- Long-running sessions can be closed manually or rely on the inactivity timeout.
+
+---
+
+## Contributing
+
+1. Fork the repo and create a branch.
+2. Make your changes with tests and documentation updates.
+3. Run `npm run build` and `npm run test` before submitting a PR.
+4. Follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+Issues and feature requests are welcome via GitHub.
+
+---
+
+## License
+
+[MIT](./LICENSE)
+
+---
+
+**Happy automating!** If this project improves your workflow, please star the repository or share feedback. Your contributions help make remote development safer and simpler for everyone. 
 
 ### Claude Desktop
 
@@ -275,7 +439,10 @@ Add an entry to `~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "ssh-mcp": {
-      "command": "ssh-mcp"
+      "command": "npx",
+      "args": [
+        "ssh-mcp-sessions"
+      ]
     }
   }
 }
@@ -291,7 +458,10 @@ Update the Claude Code workspace settings (`.vscode/settings.json` or global set
 {
   "claude.mcpServers": {
     "ssh-mcp": {
-      "command": "ssh-mcp"
+      "command": "npx",
+      "args": [
+        "ssh-mcp-sessions"
+      ]
     }
   }
 }
@@ -307,7 +477,10 @@ Create or edit `~/.config/openai-codex/mcp.json` (the path may differ per platfo
 {
   "mcpServers": {
     "ssh-mcp": {
-      "command": "ssh-mcp"
+      "command": "npx",
+      "args": [
+        "ssh-mcp-sessions"
+      ]
     }
   }
 }
@@ -323,7 +496,10 @@ Open Cursor settings → “Model Context Protocol” (or edit `~/Library/Applic
 {
   "mcpServers": {
     "ssh-mcp": {
-      "command": "ssh-mcp"
+      "command": "npx",
+      "args": [
+        "ssh-mcp-sessions"
+      ]
     }
   }
 }
@@ -331,4 +507,4 @@ Open Cursor settings → “Model Context Protocol” (or edit `~/Library/Applic
 
 After saving, reload Cursor. The MCP sidebar exposes the server; you can invoke tools via chat or the command palette (`Cmd/Ctrl+Shift+L`).
 
-> **Tip:** If you prefer an explicit path instead of relying on PATH lookup, replace `"command": "ssh-mcp"` with the absolute path to the built script, e.g. `/usr/local/lib/node_modules/ssh-mcp-sessions/build/index.js`.
+> **Tip:** If you prefer an explicit path instead of relying on `npx`, replace the command/args with the absolute path to the executable (`node_modules/.bin/ssh-mcp-sessions` for local installs or `/usr/local/lib/node_modules/ssh-mcp-sessions/build/index.js` for global installs). 

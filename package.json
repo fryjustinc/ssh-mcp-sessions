@@ -1,11 +1,11 @@
 {
   "name": "ssh-mcp-sessions",
   "license": "MIT",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "An MCP tool to manage persistent ssh connections to a collection of hosts enabling remote development, deployment, and information gathering.",
   "type": "module",
   "bin": {
-    "ssh-mcp": "build/index.js"
+    "ssh-mcp-sessions": "build/index.js"
   },
   "scripts": {
     "prepare": "npm run build",
