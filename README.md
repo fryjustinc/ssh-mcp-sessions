@@ -108,6 +108,79 @@ Run the server with `npx ssh-mcp-sessions` (or reference `./node_modules/.bin/ss
 
 ---
 
+### Claude Desktop
+
+Add an entry to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the appropriate config path on Windows/Linux:
+
+```json
+{
+  "mcpServers": {
+    "ssh-mcp": {
+      "command": "npx",
+      "args": [
+        "ssh-mcp-sessions"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving the file. You can now use the MCP Inspector or the command palette (`Cmd/Ctrl+Shift+O`) to call tools like `add-host` and `start-session`.
+
+### Claude Code (VS Code extension)
+
+Update the Claude Code workspace settings (`.vscode/settings.json` or global settings) with:
+
+```json
+{
+  "claude.mcpServers": {
+    "ssh-mcp": {
+      "command": "npx",
+      "args": [
+        "ssh-mcp-sessions"
+      ]
+    }
+  }
+}
+```
+
+Reload the window. The MCP panel will list `ssh-mcp`, and commands are available via the command palette (`Ctrl/Cmd+Shift+P` → “Claude: Run MCP Tool”).
+
+### Codex (OpenAI GPT-4o/5 with MCP)
+
+Create or edit `~/.config/openai-codex/mcp.toml` (the path may differ per platform—use the location documented by the client). Add:
+
+```toml
+[mcpServers."ssh-mcp"]
+command = "npx"
+args = ["ssh-mcp-sessions"]
+```
+
+Restart Codex or re-open the MCP inspector. The `ssh-mcp` tools will appear under the configured servers list.
+
+### Cursor IDE
+
+Open Cursor settings → “Model Context Protocol” (or edit `~/Library/Application Support/Cursor/mcp.json` directly) and include:
+
+```json
+{
+  "mcpServers": {
+    "ssh-mcp": {
+      "command": "npx",
+      "args": [
+        "ssh-mcp-sessions"
+      ]
+    }
+  }
+}
+```
+
+After saving, reload Cursor. The MCP sidebar exposes the server; you can invoke tools via chat or the command palette (`Cmd/Ctrl+Shift+L`).
+
+> **Tip:** If you prefer an explicit path instead of relying on `npx`, replace the command/args with the absolute path to the executable (`node_modules/.bin/ssh-mcp-sessions` for local installs or `/usr/local/lib/node_modules/ssh-mcp-sessions/build/index.js` for global installs). 
+
+---
+
 ## Running the Server
 
 ```bash
@@ -431,80 +504,4 @@ Issues and feature requests are welcome via GitHub.
 
 **Happy automating!** If this project improves your workflow, please star the repository or share feedback. Your contributions help make remote development safer and simpler for everyone. 
 
-### Claude Desktop
 
-Add an entry to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the appropriate config path on Windows/Linux:
-
-```json
-{
-  "mcpServers": {
-    "ssh-mcp": {
-      "command": "npx",
-      "args": [
-        "ssh-mcp-sessions"
-      ]
-    }
-  }
-}
-```
-
-Restart Claude Desktop after saving the file. You can now use the MCP Inspector or the command palette (`Cmd/Ctrl+Shift+O`) to call tools like `add-host` and `start-session`.
-
-### Claude Code (VS Code extension)
-
-Update the Claude Code workspace settings (`.vscode/settings.json` or global settings) with:
-
-```json
-{
-  "claude.mcpServers": {
-    "ssh-mcp": {
-      "command": "npx",
-      "args": [
-        "ssh-mcp-sessions"
-      ]
-    }
-  }
-}
-```
-
-Reload the window. The MCP panel will list `ssh-mcp`, and commands are available via the command palette (`Ctrl/Cmd+Shift+P` → “Claude: Run MCP Tool”).
-
-### Codex (OpenAI GPT-4o/5 with MCP)
-
-Create or edit `~/.config/openai-codex/mcp.json` (the path may differ per platform—use the location documented by the client). Add:
-
-```json
-{
-  "mcpServers": {
-    "ssh-mcp": {
-      "command": "npx",
-      "args": [
-        "ssh-mcp-sessions"
-      ]
-    }
-  }
-}
-```
-
-Restart Codex or re-open the MCP inspector. The `ssh-mcp` tools will appear under the configured servers list.
-
-### Cursor IDE
-
-Open Cursor settings → “Model Context Protocol” (or edit `~/Library/Application Support/Cursor/mcp.json` directly) and include:
-
-```json
-{
-  "mcpServers": {
-    "ssh-mcp": {
-      "command": "npx",
-      "args": [
-        "ssh-mcp-sessions"
-      ]
-    }
-  }
-}
-```
-
-After saving, reload Cursor. The MCP sidebar exposes the server; you can invoke tools via chat or the command palette (`Cmd/Ctrl+Shift+L`).
-
-> **Tip:** If you prefer an explicit path instead of relying on `npx`, replace the command/args with the absolute path to the executable (`node_modules/.bin/ssh-mcp-sessions` for local installs or `/usr/local/lib/node_modules/ssh-mcp-sessions/build/index.js` for global installs). 
