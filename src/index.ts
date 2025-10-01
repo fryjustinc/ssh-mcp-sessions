@@ -123,7 +123,7 @@ export function sanitizeCommand(command: string): string {
   }
   
   // Length check
-  if (trimmedCommand.length > 1000) {
+  if (trimmedCommand.length > 15000) {
     throw new McpError(ErrorCode.InvalidParams, 'Command is too long (max 1000 characters)');
   }
   
