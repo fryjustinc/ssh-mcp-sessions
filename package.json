@@ -1,8 +1,8 @@
 {
-  "name": "ssh-mcp",
+  "name": "ssh-mcp-sessions",
   "license": "MIT",
   "version": "1.0.12",
-  "description": "MCP server exposing SSH control for Linux and Windows systems via Model Context Protocol.",
+  "description": "An MCP tool to manage persistent ssh connections to a collection of hosts enabling remote development, deployment, and information gathering.",
   "type": "module",
   "bin": {
     "ssh-mcp": "build/index.js"
@@ -54,7 +54,7 @@
     "cli",
     "typescript"
   ],
-  "author": "tufantunc",
+  "author": "kryonas",
   "engines": {
     "node": ">=18"
   }
