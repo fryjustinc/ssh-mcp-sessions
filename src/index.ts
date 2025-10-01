@@ -122,6 +122,12 @@ async function getHostConfig(hostId: string): Promise<ConnectConfig> {
   } else if (host.keyPath) {
     const keyContent = await readFile(expandPath(host.keyPath), 'utf8');
     config.privateKey = keyContent;
+  } else {
+    // Fallback to SSH agent if available
+    if (process.env.SSH_AUTH_SOCK) {
+      config.agent = process.env.SSH_AUTH_SOCK;
+      config.agentForward = true;
+    }
   }
 
   return config;
@@ -168,7 +174,7 @@ server.tool(
   "add-host",
   "Persist a new SSH host configuration.",
   {
-    host_id: z.string().describe("Unique identifier for the host"),
+    host_id: z.string().describe("Unique identifier for the host. we recommend user@hostname"),
     host: z.string().describe("Hostname or IP address"),
     port: z.number().int().positive().default(22).describe("SSH port (default 22)"),
     username: z.string().describe("SSH username"),
