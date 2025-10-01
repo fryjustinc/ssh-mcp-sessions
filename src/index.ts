@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'crypto';
 const { Client: SSHClient, utils: sshUtils } = SSH2Module as typeof import('ssh2');
 import { z } from 'zod';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, stat } from 'fs/promises';
 import { resolve as resolvePath } from 'path';
 import os from 'os';
 
@@ -77,13 +77,18 @@ const HostsSchema = z.object({
 });
 
 async function ensureHostsFile(): Promise<void> {
+  await mkdir(HOSTS_DIR, { recursive: true });
   try {
-    await mkdir(HOSTS_DIR, { recursive: true });
-    await readFile(HOSTS_FILE, 'utf8');
+    const stats = await stat(HOSTS_FILE);
+    if (!stats.isFile()) {
+      throw new McpError(ErrorCode.InternalError, `${HOSTS_FILE} exists but is not a file`);
+    }
   } catch (err: any) {
     if (err?.code === 'ENOENT') {
       await writeFile(HOSTS_FILE, JSON.stringify({ hosts: [] }, null, 2), 'utf8');
-    } else if (err?.code === 'EISDIR') {
+    } else if (err?.code !== 'EISDIR') {
+      throw err;
+    } else {
       throw new McpError(ErrorCode.InternalError, `${HOSTS_FILE} is a directory`);
     }
   }
