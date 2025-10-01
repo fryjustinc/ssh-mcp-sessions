@@ -12,28 +12,7 @@ import { readFile, writeFile, mkdir, stat } from 'fs/promises';
 import { resolve as resolvePath } from 'path';
 import os from 'os';
 
-// Example usage: node build/index.js --host=1.2.3.4 --port=22 --user=root --password=pass --key=path/to/key --timeout=5000
-function parseArgv() {
-  const args = process.argv.slice(2);
-  const config: Record<string, string> = {};
-  for (const arg of args) {
-    const match = arg.match(/^--([^=]+)=(.*)$/);
-    if (match) {
-      config[match[1]] = match[2];
-    }
-  }
-  return config;
-}
-const isCliEnabled = process.env.SSH_MCP_DISABLE_MAIN !== '1';
-const argvConfig = isCliEnabled ? parseArgv() : {} as Record<string, string>;
-
-function parseInteger(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function expandPath(input: string): string {
+function expandPath(input: string | undefined): string | undefined {
   if (!input) return input;
   if (input === '~') return os.homedir();
   if (input.startsWith('~/')) return resolvePath(os.homedir(), input.slice(2));
@@ -41,7 +20,7 @@ function expandPath(input: string): string {
   return resolvePath(input);
 }
 
-const DEFAULT_TIMEOUT = parseInteger(argvConfig.timeout ?? String(2 * 60 * 60 * 1000), 2 * 60 * 60 * 1000); // 2 hours default timeout
+const DEFAULT_TIMEOUT = 2 * 60 * 60 * 1000; // 2 hours default timeout
 
 const HOSTS_DIR = resolvePath(os.homedir(), '.ssh-mcp');
 const HOSTS_FILE = resolvePath(HOSTS_DIR, 'hosts.json');
@@ -54,16 +33,6 @@ type StoredHost = {
   password?: string;
   keyPath?: string;
 };
-
-function ensureSshConfig() {
-  if (Number.isNaN(DEFAULT_TIMEOUT) || DEFAULT_TIMEOUT <= 0) {
-    throw new McpError(ErrorCode.InvalidParams, `Invalid timeout: ${DEFAULT_TIMEOUT}`);
-  }
-}
-
-if (isCliEnabled) {
-  ensureSshConfig();
-}
 
 const HostsSchema = z.object({
   hosts: z.array(z.object({
@@ -125,7 +94,11 @@ async function getHostConfig(hostId: string): Promise<ConnectConfig> {
   if (host.password) {
     config.password = host.password;
   } else if (host.keyPath) {
-    const keyContent = await readFile(expandPath(host.keyPath), 'utf8');
+    const expanded = expandPath(host.keyPath);
+    if (!expanded) {
+      throw new McpError(ErrorCode.InvalidParams, `Invalid key path for host '${hostId}'`);
+    }
+    const keyContent = await readFile(expanded, 'utf8');
     config.privateKey = keyContent;
   } else {
     // Fallback to SSH agent if available
@@ -607,4 +580,4 @@ if (process.env.SSH_MCP_DISABLE_MAIN !== '1') {
   });
 }
 
-export { parseArgv, ensureSshConfig };
+export {};
