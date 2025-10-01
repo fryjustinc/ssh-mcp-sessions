@@ -10,6 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { readFile, writeFile, mkdir, stat } from 'fs/promises';
 import { resolve as resolvePath } from 'path';
 import os from 'os';
+import { randomUUID } from 'crypto';
 
 function expandPath(input: string | undefined): string | undefined {
   if (!input) return input;
