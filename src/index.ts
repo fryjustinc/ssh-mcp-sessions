@@ -41,7 +41,7 @@ function expandPath(input: string): string {
   return resolvePath(input);
 }
 
-const DEFAULT_TIMEOUT = parseInteger(argvConfig.timeout ?? process.env.SSH_MCP_TIMEOUT ?? String(2 * 60 * 60 * 1000), 2 * 60 * 60 * 1000); // 2 hours default timeout
+const DEFAULT_TIMEOUT = parseInteger(argvConfig.timeout ?? String(2 * 60 * 60 * 1000), 2 * 60 * 60 * 1000); // 2 hours default timeout
 
 const HOSTS_DIR = resolvePath(os.homedir(), '.ssh-mcp');
 const HOSTS_FILE = resolvePath(HOSTS_DIR, 'hosts.json');
