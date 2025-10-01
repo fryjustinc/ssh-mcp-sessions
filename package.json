@@ -34,13 +34,13 @@
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
-  "homepage": "https://github.com/tufantunc/ssh-mcp#readme",
+  "homepage": "https://github.com/fryjustinc/ssh-mcp-sessions#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tufantunc/ssh-mcp.git"
+    "url": "https://github.com/fryjustinc/ssh-mcp-sessions.git"
   },
   "bugs": {
-    "url": "https://github.com/tufantunc/ssh-mcp/issues"
+    "url": "https://github.com/fryjustinc/ssh-mcp-sessions/issues"
   },
   "keywords": [
     "ssh",
