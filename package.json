@@ -1,7 +1,7 @@
 {
   "name": "ssh-mcp-sessions",
   "license": "MIT",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "An MCP tool to manage persistent ssh connections to a collection of hosts enabling remote development, deployment, and information gathering.",
   "type": "module",
   "bin": {
